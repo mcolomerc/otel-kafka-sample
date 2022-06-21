@@ -1,0 +1,65 @@
+version: "3.9" 
+services:
+  prometheus:
+    image: prom/prometheus:v2.29.2
+    container_name: prometheus
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus/:/etc/prometheus  
+  # zipkin
+  zipkin:
+    image: openzipkin/zipkin:latest
+    ports:
+      - "9411:9411"
+  # Jaeger
+  jaeger:
+   image: jaegertracing/all-in-one:latest
+   ports:
+     - "16686:16686"
+     - "14268"
+     - "14250"
+  # Collector
+  collector:
+   image: otel/opentelemetry-collector:latest
+   volumes:
+     - ./collector/config.yaml:/etc/collector-gateway.yaml
+   command: [ "--config=/etc/collector-gateway.yaml" ]
+   ports:
+     - "1888:1888"   # pprof extension
+     - "13133:13133" # health_check extension
+     - "4317:4317"        # OTLP gRPC receiver
+     - "4318:4318"        # OTLP HTTP receiver
+     - "55670:55679" # zpages extension
+   depends_on:
+     - jaeger
+     - zipkin
+  producer:
+    build:
+      context: ./java-otel
+      dockerfile: Dockerfile
+      args:
+        MAIN_CLASS: "demo.otel.producer.DemoProducer"
+        OTEL_VERSION: 1.15.0
+    environment:
+     - APP_NAME=producer
+     - TOPIC=mcolomer-inventory  
+     - COLLECTOR_ENDPOINT=http://collector:4317
+    depends_on:
+     - collector  
+  consumer:
+    build:
+      context: ./java-otel
+      dockerfile: Dockerfile
+      args:
+        MAIN_CLASS: "demo.otel.consumer.DemoConsumer"
+        OTEL_VERSION: 1.15.0
+    environment:
+      - APP_NAME=consumer
+      - TOPIC=mcolomer-inventory  
+      - COLLECTOR_ENDPOINT=http://collector:4317
+    depends_on:
+     - collector  
+ 
+
+     
